@@ -1,15 +1,9 @@
-# rcon-bun
+# rcon-bun | under active development, not published yet :)
 
-To install dependencies:
+Source RCON Protocol implementation in Typescript using Bun. Heavily inspired by [gorcon/rcon](https://github.com/gorcon/rcon).
 
-```bash
-bun install
-```
+# Supported Games
+- [PalWorld](https://store.steampowered.com/app/1623730/Palworld/)
 
-To run:
+Others supported by [gorcon/rcon](https://github.com/gorcon/rcon) will also probably work, so if you get this working with other things, please open a pull request for this README!
 
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.0.25. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
