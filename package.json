@@ -1,0 +1,17 @@
+{
+  "name": "rcon-ts",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/double-ended-queue": "^2.1.7",
+    "double-ended-queue": "^2.1.0-0",
+    "nanoid": "^5.0.4",
+    "true-myth": "^7.1.0"
+  }
+}
