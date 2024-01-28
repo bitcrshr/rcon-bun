@@ -1,5 +1,5 @@
 {
-  "name": "rcon-ts",
+  "name": "rcon-bun",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {

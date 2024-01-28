@@ -1,4 +1,4 @@
-# rcon-ts
+# rcon-bun
 
 To install dependencies:
 
