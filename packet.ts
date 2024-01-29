@@ -19,11 +19,36 @@ export const MAX_PACKET_SIZE: number = 4096 + MIN_PACKET_SIZE;
 /** Maximum possible signed 32 bit integer. */
 export const MAX_I32: number = 2_147_483_647;
 
+/** Describes valid i32 packet types */
+export type PacketType = 0 | 2 | 3;
+
+/** The first packet sent by the client, and is used to auth with the server */
+export const SERVERDATA_AUTH: PacketType = 3;
+
+/**
+ * The server's response to a SERVERDATA_AUTH packet. Possibly preceded
+ * by an SERVERDATA_RESPONSE_VALUE with an empty body, depending on the
+ * server's implementation.
+ *
+ * If auth was successful, packet will mirror the id of the auth request.
+ * Otherwise, the id will be -1.
+ */
+export const SERVERDATA_AUTH_RESPONSE: PacketType = 2;
+
+/** For packets containing a command to be issued to the server */
+export const SERVERDATA_EXECCOMMAND: PacketType = 2;
+
+/**
+ * Response to a SERVERDATA_EXECCOMMAND packet. The id will mirror the id
+ * of the SERVERDATA_EXECCOMMAND packet.
+ */
+export const SERVERDATA_RESPONSE_VALUE: PacketType = 0;
+
 /** Represents a packet for the RCON protocol. Guaranteed to be valid once instantiated. */
 export class Packet {
   readonly #size: number;
   readonly #id: number;
-  readonly #type: number;
+  readonly #type: PacketType;
   readonly #body: string;
 
   /**
@@ -74,13 +99,15 @@ export class Packet {
     return this.#body;
   }
 
-  private constructor(type: number, id: number, body: string) {
+  private constructor(type: PacketType, id: number, body: string) {
     this.#type = type;
     this.#id = id;
     this.#body = body;
 
     this.#size =
-      Buffer.byteLength(body) + PACKET_HEADER_SIZE + PACKET_PADDING_SIZE;
+      Buffer.byteLength(body, "ascii") +
+      PACKET_HEADER_SIZE +
+      PACKET_PADDING_SIZE;
   }
 
   /**
@@ -92,7 +119,7 @@ export class Packet {
    * @returns A Result containing either the packet or an error
    */
   public static new(
-    type: number,
+    type: PacketType,
     id: number,
     body: string
   ): Result<Packet, Error> {
@@ -112,10 +139,6 @@ export class Packet {
           `id must satisfy 0 <= id <= 2^31 - 1 (max signed 32 bit integer)`
         )
       );
-    }
-
-    if (!/^[\x00-\x7F]+$/.test(body)) {
-      return Result.err(new Error("body must only contain ASCII characters."));
     }
 
     if (body.length > 4096) {
@@ -153,6 +176,14 @@ export class Packet {
       const type = bytes.readInt32LE(n);
       n += 4;
 
+      if (![0, 2, 3].includes(type)) {
+        return Result.err(
+          new Error(
+            `${type} is not a valid packet type. Must be 0, 2, or 3. If this is expected for your game, please open a PR.`
+          )
+        );
+      }
+
       let body = bytes.toString("utf8", n);
       n += Buffer.byteLength(body);
 
@@ -162,7 +193,7 @@ export class Packet {
 
       body = body.substring(0, Buffer.byteLength(body) - 2);
 
-      return Result.ok(new Packet(type, id, body));
+      return Result.ok(new Packet(type as PacketType, id, body));
     } catch (e) {
       return Result.err(e as Error);
     }
@@ -175,14 +206,19 @@ export class Packet {
   public toBytes(): Buffer {
     let buf = Buffer.alloc(this.#size + 4);
 
-    let n = buf.writeInt32LE(this.#size);
+    let n = buf.writeInt32LE(this.#size, 0);
     n = buf.writeInt32LE(this.#id, n);
     n = buf.writeInt32LE(this.#type, n);
-    n = buf.write(this.#body, n, "ascii");
+    n += buf.write(this.#body, n, "ascii");
 
     // Null-terminate the string and the packet
     buf.set([0x00, 0x00], n);
-
     return buf;
+  }
+
+  public toString(): string {
+    return `Packet { size: ${this.#size}, id: ${this.#id}, type: ${
+      this.#type
+    }, body: ${this.#body} }`;
   }
 }

@@ -41,11 +41,13 @@ export class TcpStream {
 
       const stream = new TcpStream();
 
+      // todo: figure out how to get a connect timeout
       stream.#sock = await Bun.connect({
         hostname,
         port,
         socket: {
           data: (_, data) => {
+            console.log("got data!", data);
             stream.#readBuf.enqueue(data);
 
             for (const handle of Object.values(stream.#dataHandlers)) {
@@ -153,6 +155,32 @@ export class TcpStream {
       const listenerId = nanoid();
       let timedOut = false;
       let timeout: ReturnType<typeof setTimeout> | undefined = undefined;
+      console.log("reading ", bytes, "bytes");
+      let buf: Maybe<Buffer> = Maybe.nothing();
+
+      console.log("current readbuf:", this.#readBuf.toArray());
+
+      if (this.#bufByteLength() > 0 && this.#bufByteLength() >= bytes) {
+        console.log(
+          `readbuf has enough bytes (${this.#bufByteLength()}) to read ${bytes} bytes`
+        );
+        const maybeBuf = this.#readBytesFromBuf(bytes);
+        resolve(maybeBuf);
+        return;
+      } else if (this.#bufByteLength() > 0) {
+        console.log(
+          `readbuf has ${this.#bufByteLength()} bytes, but not enough to read ${bytes} bytes`
+        );
+        const maybeBuf = this.#readBytesFromBuf(this.#bufByteLength());
+        if (maybeBuf.isErr) {
+          resolve(Result.err(maybeBuf.error));
+          return;
+        } else {
+          buf = Maybe.just(maybeBuf.value);
+        }
+      } else {
+        console.log("readbuf is empty, need to get all bytes from stream");
+      }
 
       if (deadlineSeconds && deadlineSeconds > 0) {
         timeout = setTimeout(() => {
@@ -167,14 +195,29 @@ export class TcpStream {
             )
           );
         }, 1000 * deadlineSeconds);
+
+        console.log("set timeout with id:", timeout);
       }
 
       if (!timedOut) {
         this.#dataHandlers[listenerId] = () => {
           if (this.#bufByteLength() >= bytes) {
             delete this.#dataHandlers[listenerId];
+            const newBuf = this.#readBytesFromBuf(
+              bytes - (buf.isJust ? buf.value.byteLength : 0)
+            );
             clearTimeout(timeout);
-            resolve(this.#readBytesFromBuf(bytes));
+            console.log("cleared timeout with id:", timeout);
+            if (newBuf.isErr) {
+              resolve(Result.err(newBuf.error));
+              return;
+            }
+
+            if (buf.isJust) {
+              resolve(Result.ok(Buffer.concat([buf.value, newBuf.value])));
+            } else {
+              resolve(Result.ok(newBuf.value));
+            }
           }
         };
       } else {
@@ -215,6 +258,13 @@ export class TcpStream {
    * @returns A Result containing either the bytes read or an error
    */
   #readBytesFromBuf(bytes: number): Result<Buffer, Error> {
+    console.log(
+      "readBuf before read:",
+      this.#readBuf.toArray(),
+      "was reading",
+      bytes,
+      "bytes"
+    );
     const bufByteLength = this.#bufByteLength();
 
     if (bytes > bufByteLength) {
@@ -233,7 +283,15 @@ export class TcpStream {
 
       // we're almost done, but the last chunk has more data than we need
       if (buf.byteLength + chunk.byteLength > bytes) {
-        let leftover = Buffer.alloc(bytes - chunk.byteLength);
+        console.log(
+          "bytes",
+          bytes,
+          "chunk.byteLength",
+          chunk.byteLength,
+          "buf.byteLength",
+          buf.byteLength
+        );
+        let leftover = Buffer.alloc(chunk.byteLength - bytes);
         let leftoverBytesWritten = 0;
 
         for (const byte of chunk) {
@@ -253,6 +311,14 @@ export class TcpStream {
         bytesWritten += chunk.byteLength;
       }
     }
+
+    console.log(
+      "readBuf after read:",
+      this.#readBuf.toArray(),
+      "was reading",
+      bytes,
+      "bytes"
+    );
 
     return Result.ok(buf);
   }
